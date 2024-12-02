@@ -1,0 +1,409 @@
+---
+title: "Actividad Guiada III. Estudiantes"
+author: Carla Daniela DI MONNO
+format: 
+  html: 
+    embed-resources: true
+editor: visual
+---
+## PRIMERA PARTE - Hillshade
+
+El ‘hillshade’ es un mapa de relieve con efectos de sombras que genera profundidad visual.
+
+### Objetivo: Replica la actividad realizada en clase de obtener Hillshade para otra área de mi elección.
+
+```{r}
+# instalamos los paquetes si hace falta
+#if(!require("tidyverse")) install.packages("tidyverse")
+#if(!require("sf")) install.packages("sf")
+#if(!require("elevatr")) install.packages("elevatr")
+#if(!require("terra")) install.packages("terra")
+#if(!require("whitebox")) install.packages("whitebox")
+#if(!require("tidyterra")) install.packages("tidyterra")
+#if(!require("giscoR")) install.packages("giscoR")
+#if(!require("ggnewscale")) install.packages("ggnewscale")
+#if(!require("ggblend")) install.packages("ggblend")
+
+# paquetes
+library(sf)
+library(elevatr)
+library(tidyverse)
+library(terra)
+library(whitebox)
+library(ggnewscale)
+library(tidyterra)
+library(giscoR)
+library(units)
+library(ggblend)
+```
+## Modelo Digital del Terreno
+
+Como área de interés para esta actividad seleccioné Portugal, que es el país en el que resido actualmente. Con el paquete `giscoR` obtenemos los límites del país con diferentes resoluciones.
+
+```{r}
+pt <- gisco_get_countries(country = "Portugal", resolution = "03")
+pt
+plot(pt)
+```
+### Obtención de los datos
+
+Los límites de los lagos corresponden a una capa de modelos cartográficos digitales que ofrece el Sistema Nacional de Información Geográfica - SNIG de Portugal (https://snig.dgterritorio.gov.pt/). Nos quedamos con los lagos y lagunas de Portugal Continental (https://sniambgeoviewer.apambiente.pt/Geodocs/shpzips/vw_lag_aguas_publicas.zip) que son los más relevantes.
+
+### Preparación datos
+
+```{r}
+# Importamos los lagos
+pt_lakes <- st_read("vw_lag_aguas_publicas.shp")
+```
+```{r}
+# Calculamos el área en km2
+pt_lakes <- pt_lakes %>%
+  mutate(areakm = set_units(st_area(geometry), "km^2"))
+```
+
+
+```{r}
+# Se observa que los lagos ya están en MULTIPOLYGON
+# Graficamos
+plot(pt_lakes)
+```
+### MDT
+```{r}
+# obtenemos el mdt con 
+mdt <- get_elev_raster(pt, z = 10)
+mdt #Clase antigua de RasterLayer
+```
+```{r}
+plot(mdt)
+```
+```{r}
+# convertir a terra y enmascarar la zona de interés
+mdt <- rast(mdt) %>% 
+         mask(vect(pt)) 
+
+# reproyectamos
+mdt <- project(mdt, crs(pt_lakes))
+
+# reproyectamos 
+pt <- st_transform(pt, st_crs(pt_lakes))
+
+plot(mdt)
+```
+## Mapa de relieve
+
+```{r}
+rm(objetos_innecesarios)
+#Libero memoria
+gc()
+
+#Inspecciono dimensiones
+dim(mdt)  # Dimensiones: filas, columnas, bandas
+res(mdt)  # Resolución espacial
+ncell(mdt)  # Número total de celdas
+
+#Reduzco la resolución del mdt porque la memoria de mi computadora daba error!!! Previamente amplie la memoria disponible de mi sistema operativo
+mdt_r <- aggregate(mdt, fact = 10, fun = mean)
+
+# convertimos nuestro ráster en data.frame de xyz
+mdtdf <- as.data.frame(mdt_r, xy = TRUE, na.rm = TRUE)
+names(mdtdf)[3] <- "alt"
+
+# mapa
+ggplot() +
+  geom_raster(data = mdtdf,
+              aes(x, y, fill = alt)) +
+   geom_sf(data = pt_lakes,
+          fill = "#c6dbef", 
+          colour = NA) +
+  scale_fill_hypso_tint_c(breaks = c(180, 250, 500, 1000,
+                                     1500,  2000, 2500,
+                                     3000, 3500, 4000)) +
+  guides(fill = guide_colorsteps(barwidth = 20,
+                                 barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m") +
+  coord_sf() +
+  theme_void() +
+  theme(legend.position = "bottom")
+```
+### Calcular hillshade
+```{r}
+# estimamos la pendiente
+sl <- terrain(mdt_r, "slope", unit = "radians")
+plot(sl)
+```
+```{r}
+# estimamos la orientación
+asp <- terrain(mdt_r, "aspect", unit = "radians")
+plot(asp)
+```
+```{r}
+# calculamos el efecto hillshade con 30º de elevación 
+hill_single <- shade(sl, asp, 
+      angle = 30, 
+      direction = 300,
+      normalize= TRUE)
+
+# resultado final hillshade 
+plot(hill_single, col = grey(1:100/100))
+```
+### Combinar el relieve y el efecto de sombra
+```{r}
+# convertimos el hillshade a xyz
+hilldf_single <- as.data.frame(hill_single, xy = TRUE)
+
+# mapa 
+ggplot() +
+  geom_raster(data = hilldf_single,
+              aes(x, y, fill = hillshade),
+              show.legend = FALSE) +
+  scale_fill_distiller(palette = "Greys") +
+  new_scale_fill() +
+  geom_raster(data = mdtdf,
+              aes(x, y, fill = alt),
+              alpha = .7) +
+  scale_fill_hypso_tint_c(breaks = c(180, 250, 500, 1000,
+                                     1500,  2000, 2500,
+                                     3000, 3500, 4000)) +
+  geom_sf(data = pt_lakes,
+          fill = "#c6dbef", colour = NA) +
+  guides(fill = guide_colorsteps(barwidth = 20,
+                                 barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m") +
+  coord_sf() +
+  theme_void() +
+  theme(legend.position = "bottom")
+```
+### Sombras multidireccionales
+```{r}
+# pasamos varias direcciones a shade()
+hillmulti <- map(c(270, 15, 60, 330), function(dir){ 
+                    shade(sl, asp, 
+                          angle = 30, 
+                          direction = dir,
+                          normalize= TRUE)}
+  )
+
+# creamos un raster multidimensional y lo reducimos sumando
+hillmulti <- rast(hillmulti) %>% sum()
+
+# multidireccional
+plot(hillmulti, col = grey(1:100/100))
+```
+```{r}
+# unidireccional
+plot(hill_single, col = grey(1:100/100))
+```
+### Relieve con sombras multidireccionales.
+```{r}
+# convertimos el hillshade a xyz
+hillmultidf <- as.data.frame(hillmulti, xy = TRUE)
+
+# mapa
+ggplot() +
+  geom_tile(data = hillmultidf,
+              aes(x, y, fill = sum),
+              show.legend = FALSE) +
+  scale_fill_distiller(palette = "Greys") +
+  new_scale_fill() +
+  geom_raster(data = mdtdf,
+              aes(x, y, fill = alt),
+              alpha = .7) +
+  scale_fill_hypso_tint_c(breaks = c(180, 250, 500, 1000,
+                                     1500,  2000, 2500,
+                                     3000, 3500, 4000)) +
+  geom_sf(data = pt_lakes,
+          fill = "#c6dbef", colour = NA) +
+  guides(fill = guide_colorsteps(barwidth = 20,
+                                 barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m") +
+  coord_sf() +
+  theme_void() +
+    theme(legend.position = "top")
+```
+```{r}
+# mapa
+m <- ggplot() +
+  list(
+  geom_tile(data = hillmultidf,
+              aes(x, y, fill = sum),
+              show.legend = FALSE),
+  scale_fill_distiller(palette = "Greys"),
+  new_scale_fill(),
+  geom_tile(data = mdtdf,
+              aes(x, y, fill = alt),
+              alpha = .7),
+  scale_fill_hypso_tint_c(breaks = c(180, 250, 500, 1000,
+                                     1500,  2000, 2500,
+                                     3000, 3500, 4000))
+  ) %>% blend("multiply") +
+  geom_sf(data = pt_lakes,
+          fill = "#c6dbef", colour = NA) +
+  guides(fill = guide_colorsteps(barwidth = 20,
+                                 barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m") +
+  coord_sf() +
+  theme_void() +
+    theme(legend.position = "top")
+
+ggsave("mdt_hillshade_blend.png", m, 
+       width = 10, 
+       height = 8, 
+       unit = "in",
+       device = png, 
+       type = "cairo",
+       bg = "white")
+```
+
+### Alternativa para direcciones multidireccionales
+```{r}
+# instalar whitebox
+install_whitebox()
+```
+```{r}
+# exportamos el mdt
+writeRaster(mdt_r, "mdt_r.tiff", overwrite = TRUE)
+
+# iniciamos whitebox
+wbt_init()
+
+# creamos el hillshade
+wbt_multidirectional_hillshade("mdt_r.tiff",
+                               "hillshade.tiff")
+
+# volvemos a importar el hillshade
+hillwb <- rast("hillshade.tiff")
+plot(hillwb)
+```
+```{r}
+# volver a enmascarar
+hillwb <- mask(hillwb, vect(pt))
+plot(hillwb)
+```
+```{r}
+# convertimos el hillshade a xyz
+hillwbdf <- as.data.frame(hillwb, xy = TRUE)
+
+# mapa
+ggplot() +
+  geom_raster(data = hillwbdf,
+              aes(x, y, fill = hillshade),
+              show.legend = FALSE) +
+  scale_fill_distiller(palette = "Greys") +
+  new_scale_fill() +
+  geom_raster(data = mdtdf,
+              aes(x, y, fill = alt),
+              alpha = .7) +
+  scale_fill_hypso_tint_c(breaks = c(180, 250, 500, 1000,
+                                     1500,  2000, 2500,
+                                     3000, 3500, 4000)) +
+  guides(fill = guide_colorsteps(barwidth = 20,
+                                 barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m") +
+  coord_sf() +
+  theme_void()  +
+  theme(legend.position = "top")
+```
+
+## Camas hospitalarias en Europa
+La tarea consiste en crear un mapa de la UE con datos sobre camas hospitalarias a nivel regional (NUTS-2) (dataset hlth_rs_bdsrg) usando el paquete `{eurostat}`. La dos funciones fundamentales son `get_eurostat()` y `get_eurostat_geospatial()`.
+
+### Paquetes
+```{r}
+#if(!require("eurostat")) install.packages("eurostat")
+#if(!require("giscoR")) install.packages("giscoR")
+#if(!require("mapview")) install.packages("mapview")
+#if(!require("paletteer")) install.packages("paletteer")
+#if(!require("ggsci")) install.packages("ggsci")
+
+
+library(sf)
+library(tidyverse)
+library(giscoR)
+library(eurostat)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(mapview)
+library(viridis)
+library(paletteer)
+```
+
+### Preparación de datos
+
+```{r}
+# 2. Descargar datos sobre camas hospitalarias (NUTS-2)
+camas_hospitalarias <- get_eurostat("hlth_rs_bdsrg", time_format = "raw")
+```
+```{r}
+# Convertir la columna `TIME_PERIOD` a numérica y filtrar por el año más reciente
+camas_hospitalarias <- camas_hospitalarias %>%
+  mutate(TIME_PERIOD = as.numeric(TIME_PERIOD)) %>%
+  filter(TIME_PERIOD == max(TIME_PERIOD, na.rm = TRUE)) %>%
+  select(geo, values)
+
+# 3. Descargar datos geoespaciales a nivel NUTS-2
+geo_nuts2 <- get_eurostat_geospatial(nuts_level = 2)
+
+# 4. Unir los datos geoespaciales con los datos de camas hospitalarias
+map_data <- geo_nuts2 %>%
+  left_join(camas_hospitalarias, by = c("id" = "geo"))
+```
+### Mapa Inicial
+```{r}
+# 5. Crear el mapa
+ggplot(map_data) +
+  geom_sf(aes(fill = values), color = "white", size = 0.1) +
+  scale_fill_viridis_c(option = "plasma", na.value = "lightgrey", 
+                       name = "Camas hospitalarias\npor 1000 habitantes") +
+  labs(title = "Camas Hospitalarias en la UE a Nivel Regional (NUTS-2)") +  
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+```
+### Mapa Final
+```{r}
+library(mapview)
+library(leaflet)
+library(htmltools)
+
+# Filtrar los valores NA en la columna "values"
+map_data_filtered <- subset(map_data, !is.na(values))
+
+# Calcular el mínimo y máximo de values
+min_value <- min(map_data_filtered$values)
+max_value <- max(map_data_filtered$values)
+
+# Crear una nueva columna de rangos basada en el mínimo y máximo
+map_data_filtered$ranges <- cut(map_data_filtered$values,
+                                 breaks = seq(min_value, max_value, length.out = 6), # 5 rangos
+                                 include.lowest = TRUE)
+
+# Crear el mapa utilizando leaflet
+map <- leaflet() %>%
+  addTiles() %>%
+  addPolygons(data = map_data_filtered,
+              fillColor = ~colorBin("YlOrRd", map_data_filtered$values, bins = 5)(values),  
+              fillOpacity = 0.6,
+              color = "white",
+              weight = 1,
+              highlight = highlightOptions(weight = 2, color = "#333", fillOpacity = 0.7)) %>%
+  # Añadir la leyenda normal
+  addLegend("bottomright", 
+            pal = colorBin("YlOrRd", domain = map_data_filtered$values, bins = 5),  # Usa el mismo colorBin
+            values = map_data_filtered$values,
+            title = "Camas por 1000 habitantes",
+            opacity = 0.7)
+
+# Mostrar el mapa
+map
+```
+
+
