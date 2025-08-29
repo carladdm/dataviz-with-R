@@ -2,8 +2,9 @@
 ![R](https://img.shields.io/badge/R-276DC3?style=for-the-badge&logo=r&logoColor=white)
 ![Quarto](https://img.shields.io/badge/Quarto-222222?style=for-the-badge&logo=quarto&logoColor=white)
 ![GitHub last commit](https://img.shields.io/github/last-commit/carladdm/dataviz-with-R?style=for-the-badge)
+<!--
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)
-
+-->
 
 
 # Data Visualization with R
@@ -91,8 +92,9 @@ Make sure you have the following installed:
 - Explore hydrological data (reservoir anomalies in Spain) and terrain data (Portugal hillshade maps).
 - Create reproducible and shareable reports using Quarto.
 
-
+<!--
 ## License
 
 This project is licensed under the MIT License — see the [MIT](https://choosealicense.com/licenses/mit/).
+-->
 
