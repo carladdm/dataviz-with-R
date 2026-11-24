@@ -33,3 +33,5 @@ Thumbs.db
 !data/processed/mdt_portugal.tif
 !data/processed/nuts2_2013.rds
 !data/processed/camas_hospitalarias.rds
+
+/.quarto/
