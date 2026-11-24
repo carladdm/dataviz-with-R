@@ -68,8 +68,9 @@ renderice sin repetir descargas ni depender de rutas relativas frágiles.
 - **Objetivo:** mostrar la proporción de embalses por percentil de volumen, a
   nivel nacional y por cuenca, usando el año hidrológico (oct–sep), para
   explorar la variabilidad hidrológica y la monitorización de sequías.
-- **Técnicas:** `tidyverse`, `janitor`, `patchwork`, ECDF por embalse,
-  pequeños múltiples, anotaciones y composición final con `patchwork`.
+- **Técnicas:** `ggplot2` (vía `tidyverse`), `janitor`, `patchwork`, ECDF por
+  embalse, pequeños múltiples, anotaciones y composición final con
+  `patchwork`.
 - **Fuente:** MITECO, histórico semanal de embalses.
 - **Nota:** el informe parte de la Actividad Guiada 2 de Dominic Royé
   (@dr_xeo); las ampliaciones propias están señaladas en el documento.
@@ -79,8 +80,8 @@ renderice sin repetir descargas ni depender de rutas relativas frágiles.
 - **Objetivo:** generar mapas de relieve (*hillshade*) unidireccional y
   multidireccional de Portugal a partir de datos del SNIG, y cartografiar
   camas hospitalarias NUTS-2 en Europa.
-- **Técnicas:** `sf`, `terra`, `tidyterra`, `whitebox`, `ggnewscale`,
-  `ggblend`, `eurostat` y `leaflet`.
+- **Técnicas:** `ggplot2`, `sf`, `terra`, `tidyterra`, `whitebox`,
+  `ggnewscale`, `ggblend`, `eurostat` y `leaflet`.
 - **Fuentes:** SNIG/APA (lagos), teselas de elevación vía `elevatr` y
   Eurostat (`hlth_rs_bdsrg`, unidad `P_HTHAB`, año 2013).
 
@@ -92,7 +93,7 @@ renderice sin repetir descargas ni depender de rutas relativas frágiles.
 - **Criterio analítico y rigor metodológico:** definición explícita del año
   hidrológico (oct–sep), *baseline* histórico fijo, umbral de sequía
   (`< percentil 40`) y cálculo dinámico de métricas narrativas.
-- **Visualización estadística y geoespacial:** aplicación de R a datos
+- **Visualización estadística y geoespacial:** aplicación de `ggplot2` a datos
   ambientales y territoriales mediante gráficos multi-panel (embalses en
   España), modelado del relieve (*hillshade* en Portugal) y cartografía
   temática europea.

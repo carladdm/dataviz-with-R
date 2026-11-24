@@ -28,6 +28,7 @@ suppressPackageStartupMessages({
   library(terra)
   library(whitebox)
   library(tidyverse)
+  library(ggplot2)
   library(ggnewscale)
   library(tidyterra)
   library(giscoR)
