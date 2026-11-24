@@ -1,0 +1,33 @@
+# Datos descargados / cacheados
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Artefactos generados
+outputs/*
+!outputs/.gitkeep
+*.png
+*.jpg
+*.tif
+*.tiff
+*.mdb
+*.zip
+
+# Entorno R / Quarto
+.Rproj.user/
+.Rhistory
+.RData
+renv/library/
+.quarto/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Datos procesados ligeros que SÍ se versionan
+# (van después de *.tif para que la excepción prevalezca)
+!data/processed/lagos_portugal.rds
+!data/processed/mdt_portugal.tif
+!data/processed/nuts2_2013.rds
+!data/processed/camas_hospitalarias.rds

@@ -1,0 +1,311 @@
+---
+title: "Mapas de relieve de Portugal y camas hospitalarias en Europa"
+subtitle: "Proyecto 2 · Visualización geoespacial"
+author: "Carla Daniela Di Monno"
+format:
+  html:
+    embed-resources: true
+    theme: cosmo
+    code-fold: true
+    toc: true
+editor: source
+execute:
+  message: false
+  warning: false
+---
+
+## Primera parte: hillshade de Portugal
+
+El *hillshade* es un mapa de relieve con efectos de sombra que genera
+profundidad visual. La zona elegida es Portugal, el país en el que resido.
+
+```{r}
+#| label: setup
+#| include: false
+suppressPackageStartupMessages({
+  library(sf)
+  library(elevatr)
+  library(terra)
+  library(whitebox)
+  library(tidyverse)
+  library(ggnewscale)
+  library(tidyterra)
+  library(giscoR)
+  library(units)
+  library(ggblend)
+  library(eurostat)
+  library(mapview)
+  library(leaflet)
+  library(htmltools)
+  library(viridis)
+  library(paletteer)
+  library(here)
+  library(readr)
+})
+
+source(here("R", "dataviz_theme.R"))
+```
+
+Los datos se preparan una sola vez con `scripts/fetch_ag3_data.R` y se guardan
+en `data/processed/`. Así el informe se renderiza sin descargas repetidas.
+
+```{r}
+#| label: cargar-datos
+ruta_lagos <- here("data", "processed", "lagos_portugal.rds")
+ruta_mdt <- here("data", "processed", "mdt_portugal.tif")
+
+if (!file.exists(ruta_lagos) || !file.exists(ruta_mdt)) {
+  stop("Faltan datos. Ejecuta: Rscript scripts/fetch_ag3_data.R", call. = FALSE)
+}
+
+pt_lakes <- read_rds(ruta_lagos)
+mdt_r <- rast(ruta_mdt)
+names(mdt_r) <- "alt"
+
+pt <- gisco_get_countries(country = "Portugal", resolution = "03") %>%
+  st_transform(st_crs(pt_lakes))
+
+glimpse(pt_lakes)
+```
+
+### Límites de los lagos
+
+Los límites proceden del Sistema Nacional de Información Geográfica de
+Portugal (SNIG), concretamente la capa de lagos y lagunas de dominio público
+de Portugal Continental.
+
+```{r}
+#| label: lagos-area
+pt_lakes <- pt_lakes %>%
+  mutate(areakm = set_units(st_area(geometry), "km^2"))
+
+pt_lakes %>%
+  st_drop_geometry() %>%
+  select(areakm) %>%
+  summary()
+```
+
+### Modelo digital del terreno
+
+El MDT se descarga con `elevatr` y se agrega para reducir el consumo de
+memoria. Se trabaja directamente con `SpatRaster`, evitando convertirlo a un
+data.frame y los avisos de píxeles irregularmente espaciados.
+
+```{r}
+#| label: mdt-info
+dim(mdt_r)
+res(mdt_r)
+ncell(mdt_r)
+
+ALT_BREAKS <- c(0, 200, 500, 1000, 1500, 2000, 2500)
+```
+
+```{r}
+#| label: mapa-altitud
+ggplot() +
+  geom_spatraster(data = mdt_r, aes(fill = alt)) +
+  scale_fill_hypso_tint_c(breaks = ALT_BREAKS) +
+  geom_sf(data = pt_lakes, fill = "#c6dbef", colour = NA) +
+  guides(fill = guide_colorsteps(barwidth = 20, barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m", title = "Altitud de Portugal") +
+  coord_sf() +
+  theme_void() +
+  theme(legend.position = "bottom")
+```
+
+### Calcular el hillshade
+
+Se estiman pendiente y orientación en radianes y se aplica `terra::shade()`
+con 30º de elevación.
+
+```{r}
+#| label: hillshade-simple
+sl <- terrain(mdt_r, "slope", unit = "radians")
+asp <- terrain(mdt_r, "aspect", unit = "radians")
+
+hill_single <- shade(sl, asp, angle = 30, direction = 300, normalize = TRUE)
+names(hill_single) <- "hillshade"
+
+plot(hill_single, col = grey(1:100 / 100))
+```
+
+### Función de mapa reutilizable
+
+En lugar de repetir el mismo código para cada variante, se define una única
+función que combina el sombreado, la altitud y los lagos.
+
+```{r}
+#| label: funcion-mapa
+make_relief_map <- function(hill, layer = "hillshade",
+                            legend = "bottom",
+                            alpha_alt = .7) {
+  names(hill) <- layer
+
+  ggplot() +
+    geom_spatraster(data = hill, aes(fill = .data[[layer]]),
+                    show.legend = FALSE) +
+    scale_fill_distiller(palette = "Greys") +
+    new_scale_fill() +
+    geom_spatraster(data = mdt_r, aes(fill = alt), alpha = alpha_alt) +
+    scale_fill_hypso_tint_c(breaks = ALT_BREAKS) +
+    geom_sf(data = pt_lakes, fill = "#c6dbef", colour = NA) +
+    guides(fill = guide_colorsteps(barwidth = 20, barheight = .5,
+                                   title.position = "right")) +
+    labs(fill = "m") +
+    coord_sf() +
+    theme_void() +
+    theme(legend.position = legend)
+}
+
+make_relief_map(hill_single, legend = "bottom")
+```
+
+### Sombras multidireccionales
+
+```{r}
+#| label: hillshade-multiple
+hillmulti <- map(c(270, 15, 60, 330), function(dir) {
+  shade(sl, asp, angle = 30, direction = dir, normalize = TRUE)
+}) %>%
+  rast() %>%
+  sum()
+
+names(hillmulti) <- "hillshade"
+
+make_relief_map(hillmulti, legend = "top")
+```
+
+### Comparación con mezcla de capas
+
+```{r}
+#| label: mapa-blend
+mapa_blend <- ggplot() +
+  list(
+    geom_spatraster(data = hillmulti, aes(fill = hillshade),
+                    show.legend = FALSE),
+    scale_fill_distiller(palette = "Greys"),
+    new_scale_fill(),
+    geom_spatraster(data = mdt_r, aes(fill = alt), alpha = .7),
+    scale_fill_hypso_tint_c(breaks = ALT_BREAKS)
+  ) %>%
+  ggblend::blend("multiply") +
+  geom_sf(data = pt_lakes, fill = "#c6dbef", colour = NA) +
+  guides(fill = guide_colorsteps(barwidth = 20, barheight = .5,
+                                 title.position = "right")) +
+  labs(fill = "m") +
+  coord_sf() +
+  theme_void() +
+  theme(legend.position = "top")
+
+mapa_blend
+```
+
+```{r}
+#| label: exportar-relieve
+#| include: false
+ggsave(
+  here("outputs", "02-hillshade.png"), mapa_blend,
+  width = 10, height = 8, units = "in", bg = "white"
+)
+```
+
+### Alternativa con WhiteboxTools
+
+WhiteboxTools ofrece una implementación propia de hillshade multidireccional.
+La instalación del binario solo se hace si no está disponible.
+
+```{r}
+#| label: whitebox
+if (!whitebox::check_whitebox_binary()) {
+  whitebox::install_whitebox()
+}
+
+tif_temp <- here("data", "processed", "mdt_r.tif")
+wb_temp <- here("data", "processed", "hillshade_wb.tif")
+
+terra::writeRaster(mdt_r, tif_temp, overwrite = TRUE)
+whitebox::wbt_init()
+whitebox::wbt_multidirectional_hillshade(tif_temp, wb_temp)
+
+hillwb <- rast(wb_temp) %>%
+  mask(vect(pt))
+names(hillwb) <- "hillshade"
+
+make_relief_map(hillwb, legend = "top")
+```
+
+## Segunda parte: camas hospitalarias en Europa (NUTS-2)
+
+Los datos proceden de Eurostat (`hlth_rs_bdsrg`). Se usa la unidad
+`P_HTHAB` —**camas por 100.000 habitantes**— y el año 2013, último con
+cobertura amplia en NUTS-2 dentro de este dataset histórico. Filtrar también
+`facility == "HBEDT"` evita duplicar regiones con distintos tipos de centro.
+
+```{r}
+#| label: camas-datos
+ruta_camas <- here("data", "processed", "camas_hospitalarias.rds")
+ruta_nuts <- here("data", "processed", "nuts2_2013.rds")
+
+if (!file.exists(ruta_camas) || !file.exists(ruta_nuts)) {
+  stop("Faltan datos. Ejecuta: Rscript scripts/fetch_ag3_data.R", call. = FALSE)
+}
+
+camas <- read_rds(ruta_camas)
+geo_nuts2 <- read_rds(ruta_nuts)
+
+map_data <- geo_nuts2 %>%
+  left_join(camas, by = c("id" = "geo"))
+
+stopifnot(!anyDuplicated(map_data$id))
+```
+
+```{r}
+#| label: mapa-camas-estatico
+#| fig-height: 6
+#| fig-width: 10
+ggplot(map_data) +
+  geom_sf(aes(fill = values), color = "white", linewidth = 0.1) +
+  scale_fill_viridis_c(
+    option = "plasma", na.value = "lightgrey",
+    name = "Camas por 100.000 hab."
+  ) +
+  labs(title = "Camas hospitalarias en la UE (NUTS-2, 2013)") +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+```
+
+```{r}
+#| label: mapa-camas-interactivo
+#| fig-height: 6
+map_data_filtered <- filter(map_data, !is.na(values))
+pal <- colorBin("YlOrRd", domain = map_data_filtered$values, bins = 5)
+
+leaflet() %>%
+  addTiles() %>%
+  addPolygons(
+    data = map_data_filtered,
+    fillColor = ~ pal(values),
+    fillOpacity = 0.6,
+    color = "white",
+    weight = 1,
+    highlight = highlightOptions(weight = 2, color = "#333",
+                                 fillOpacity = 0.7)
+  ) %>%
+  addLegend(
+    "bottomright", pal = pal, values = map_data_filtered$values,
+    title = "Camas por 100.000 hab.", opacity = 0.7
+  )
+```
+
+## Sesión
+
+```{r}
+#| label: session-info
+#| echo: false
+sessionInfo()
+```

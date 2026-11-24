@@ -1,0 +1,351 @@
+---
+title: "Anomalías del volumen en embalses de España"
+subtitle: "Proyecto 1 · Análisis temporal y pequeños múltiples"
+author: "Carla Daniela Di Monno"
+date: 2024-11-18
+format:
+  html:
+    embed-resources: true
+    theme: cosmo
+    code-fold: true
+    toc: true
+editor: source
+execute:
+  message: false
+  warning: false
+---
+
+**Objetivo.** Mostrar, a nivel nacional y por cuenca hidrográfica, la proporción
+de embalses según el percentil de su volumen embalsado, usando el año
+hidrológico (octubre–septiembre) como unidad temporal.
+
+> **Procedencia.** Este informe parte de la Actividad Guiada 2 del curso de
+> visualización con R, cuyo material de referencia es de Dominic Royé
+> (@dr_xeo). Las ampliaciones propias son el análisis del año 1994-1995, la
+> serie completa 1989-2024, el gráfico polar y la verificación cuantitativa
+> del año más seco.
+
+## Paquetes y datos
+
+```{r}
+#| label: setup
+#| include: false
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(lubridate)
+  library(readxl)
+  library(janitor)
+  library(patchwork)
+  library(here)
+  library(knitr)
+})
+
+source(here("R", "embalses.R"))
+source(here("R", "dataviz_theme.R"))
+```
+
+Los datos se descargan una sola vez con `scripts/fetch_embalses.R` y se guardan
+en `data/processed/embalses_raw.rds`. Así el informe no depende de la red ni
+del controlador ODBC en cada renderización.
+
+```{r}
+#| label: cargar-datos
+emb_raw <- read_embalses()
+emb <- prepare_embalses(emb_raw)
+
+glimpse(emb)
+```
+
+### Criterio de percentiles
+
+El percentil de cada embalse se calcula con la ECDF de **toda su serie
+histórica disponible**. Es decir, se interpreta como “posición respecto al
+histórico 1988–…”, no como una señal disponible en cada fecha (no hay ventana
+acumulada). Se considera *más seco de lo normal* un volumen por debajo del
+percentil 40:
+
+```{r}
+#| label: umbral
+PERCENTILE_BREAKS
+DRY_MAX
+```
+
+## Nivel nacional
+
+```{r}
+#| label: resumen-nacional
+resumen_nacional <- function(anio) {
+  emb %>%
+    filter(hy == anio) %>%
+    group_by(fecha) %>%
+    count(agua_cat, .drop = FALSE) %>%
+    mutate(rel = n / sum(n))
+}
+
+ymin_nacional <- function(anio) {
+  share_dry(filter(emb, hy == anio), "fecha") %>%
+    filter(fecha == max(fecha)) %>%
+    pull(rel_seco)
+}
+
+res_nacional <- resumen_nacional(2024)
+ymin_actual <- ymin_nacional(2024)
+
+scales::percent(ymin_actual, 1)
+```
+
+```{r}
+#| label: grafico-nacional
+#| fig-height: 6
+plot_nacional <- function(res, ymin, titulo, anio) {
+  fecha_normal <- min(res$fecha) + (max(res$fecha) - min(res$fecha)) / 3
+
+  ggplot(res, aes(fecha, rel, fill = agua_cat)) +
+    geom_area() +
+    annotate("linerange", x = max(res$fecha) + days(4),
+             ymax = 1, ymin = 1 - ymin, linewidth = .6) +
+    annotate("text", x = max(res$fecha) + days(25), y = .95,
+             label = scales::percent(ymin, 1)) +
+    annotate("text", x = fecha_normal, y = .51,
+             label = "normal", fontface = "bold") +
+    scale_fill_brewer(
+      palette = "BrBG",
+      labels = ~ scales::number(.x, scale = 100),
+      guide = guide_colorsteps()
+    ) +
+    scale_x_date(
+      breaks = seq(ymd(paste0(anio - 1, "-11-01")),
+                   ymd(paste0(anio, "-10-01")), "2 month"),
+      date_labels = "%b %y"
+    ) +
+    scale_y_continuous(breaks = c(0, .25, .5, .75, 1),
+                       labels = scales::label_percent()) +
+    labs(x = NULL, y = "Proporción de embalses", fill = "Percentil",
+         title = titulo, tag = str_wrap("más seco de lo normal", 10)) +
+    coord_cartesian(expand = FALSE, clip = "off") +
+    theme_informe() +
+    theme(
+      legend.margin = margin(),
+      legend.ticks = element_line(color = "black", linewidth = .8),
+      plot.tag.position = c(1, .9),
+      plot.tag = element_text(size = 8),
+      plot.title = element_text(size = 14, vjust = -0.9, margin = margin()),
+      aspect.ratio = 1
+    )
+}
+
+g_2024 <- plot_nacional(res_nacional, ymin_actual, "Nacional", 2024)
+g_2024
+```
+
+## Cuencas hidrográficas
+
+Las cuencas se ordenan de mayor a menor proporción media de embalses secos,
+en lugar de usar un orden posicional fijo. Se excluyen las que tienen menos
+de 10 embalses.
+
+```{r}
+#| label: cuencas
+res_cuenca <- emb %>%
+  filter(hy == 2024) %>%
+  group_by(ambito_nombre, fecha) %>%
+  count(agua_cat, .drop = FALSE) %>%
+  mutate(rel = n / sum(n), nembalses = sum(n)) %>%
+  ungroup() %>%
+  filter(nembalses >= 10)
+
+orden_cuencas <- share_dry(filter(emb, hy == 2024), "ambito_nombre") %>%
+  arrange(desc(rel_seco)) %>%
+  pull(ambito_nombre)
+
+res_cuenca_sel <- res_cuenca %>%
+  mutate(ambito_nombre = factor(ambito_nombre, levels = orden_cuencas))
+```
+
+```{r}
+#| label: grafico-cuencas
+#| fig-height: 6
+#| fig-width: 13
+p_cuencas <- ggplot(res_cuenca_sel, aes(fecha, rel, fill = agua_cat)) +
+  geom_area() +
+  scale_fill_brewer(palette = "BrBG", guide = guide_colorsteps()) +
+  scale_x_date(
+    breaks = seq(ymd("2023-11-01"), ymd("2024-10-01"), "3 month"),
+    date_labels = "%b", expand = expansion(0)
+  ) +
+  scale_y_continuous(breaks = c(0, .25, .5, .75, 1),
+                     labels = ~ scales::number(.x, scale = 100),
+                     expand = expansion()) +
+  facet_wrap(
+    ~ ambito_nombre, ncol = 5, scales = "free_x",
+    labeller = labeller(
+      ambito_nombre = label_wrap_gen(width = 20, multi_line = TRUE)
+    )
+  ) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  coord_cartesian(clip = "off") +
+  theme_informe() +
+  theme(
+    panel.spacing.x = unit(1, "lines"),
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    strip.text = element_text(face = "bold"),
+    strip.clip = "off",
+    aspect.ratio = 1
+  )
+
+p_cuencas
+```
+
+## Año hidrológico 1994-1995
+
+```{r}
+#| label: año-1995
+#| fig-height: 6
+res_1995 <- resumen_nacional(1995)
+ymin_1995 <- ymin_nacional(1995)
+
+g_1995 <- plot_nacional(res_1995, ymin_1995, "Nacional 1994-1995", 1995)
+g_1995
+```
+
+## Toda la serie: pequeños múltiples
+
+```{r}
+#| label: serie-completa
+res_nacional_t <- emb %>%
+  group_by(fecha, hy) %>%
+  count(agua_cat, .drop = FALSE) %>%
+  mutate(rel = n / sum(n), nembalses = sum(n)) %>%
+  ungroup() %>%
+  filter(nembalses >= 10)
+
+anios <- range(res_nacional_t$hy)
+```
+
+```{r}
+#| label: grafico-serie
+#| fig-height: 20
+#| fig-width: 15
+p_serie <- ggplot(res_nacional_t, aes(fecha, rel, fill = agua_cat)) +
+  geom_area() +
+  scale_fill_brewer(palette = "BrBG", guide = guide_colorsteps()) +
+  scale_x_date(
+    breaks = seq(ymd(paste0(anios[1], "-11-01")),
+                 ymd(paste0(anios[2], "-10-01")), "3 month"),
+    date_labels = "%b", expand = expansion(0)
+  ) +
+  scale_y_continuous(breaks = c(0, .25, .5, .75, 1),
+                     labels = ~ scales::number(.x, scale = 100),
+                     expand = expansion()) +
+  facet_wrap(~ hy, ncol = 6, scales = "free_x") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  coord_cartesian(clip = "off") +
+  theme_informe() +
+  theme(
+    panel.spacing.x = unit(1, "lines"),
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    strip.text = element_text(face = "bold", size = 11),
+    strip.clip = "off",
+    aspect.ratio = 1
+  )
+
+p_serie
+```
+
+### ¿Fue 1995 el año más seco?
+
+En lugar de afirmarlo en el título, se calcula la proporción media de embalses
+por debajo del percentil 40 para cada año hidrológico:
+
+```{r}
+#| label: ranking-anios
+sequia_anual <- share_dry(emb, "hy") %>% arrange(desc(rel_seco))
+
+kable(
+  head(sequia_anual, 5),
+  digits = 3,
+  col.names = c("Año hidrológico", "n", "n secos", "Proporción"),
+  caption = "Años con mayor proporción media de embalses secos"
+)
+
+anio_mas_seco <- sequia_anual$hy[1]
+```
+
+## Composición final
+
+```{r}
+#| label: composicion-final
+#| fig-height: 15
+#| fig-width: 20
+update_date <- format(max(res_nacional$fecha), "%d %B %Y")
+
+final <- wrap_plots(A = g_1995, B = p_serie, design = "AB") +
+  plot_annotation(
+    title = str_glue("EMBALSES {anios[1]}-{anios[2]}: {anio_mas_seco} el año más seco"),
+    subtitle = str_glue("Actualizado el {update_date}"),
+    caption = "Carla Di Monno | Datos: MITECO | Base: Dominic Royé (@dr_xeo)",
+    theme = theme(
+      plot.title = element_text(size = 25, hjust = .5, colour = "#01665e",
+                                face = "bold",
+                                margin = margin(10, 5, 5, 5)),
+      plot.subtitle = element_text(hjust = 0, vjust = 24, size = 8),
+      plot.caption = element_text(hjust = 0, size = 8)
+    )
+  )
+
+final
+```
+
+```{r}
+#| label: exportar
+#| include: false
+ggsave(
+  here("outputs", "01-embalses.png"), final,
+  height = 15, width = 20, units = "in", bg = "white"
+)
+```
+
+## Bono: gráfico polar nacional
+
+```{r}
+#| label: polar
+#| fig-height: 7
+#| fig-width: 8
+ggplot(res_nacional_t, aes(fecha, rel, fill = agua_cat)) +
+  geom_area() +
+  scale_fill_brewer(palette = "BrBG", guide = guide_colorsteps()) +
+  scale_x_date(
+    breaks = seq(min(res_nacional_t$fecha), max(res_nacional_t$fecha), "year"),
+    date_labels = "%y", expand = expansion(0)
+  ) +
+  scale_y_continuous(breaks = c(0, .25, .5, .75, 1),
+                     labels = ~ scales::number(.x, scale = 100),
+                     expand = expansion()) +
+  labs(
+    title = str_glue("Evolución nacional de embalses ({anios[1]}-{anios[2]})"),
+    subtitle = "Proporción de embalses por categoría de percentil",
+    x = NULL, y = NULL, fill = "Percentil"
+  ) +
+  coord_polar(theta = "x", clip = "off") +
+  theme_informe() +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 10, face = "bold"),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(size = 6),
+    plot.title = element_text(size = 16, face = "bold",
+                              colour = "#01665e", hjust = .5),
+    plot.subtitle = element_text(size = 10, hjust = .5),
+    aspect.ratio = 1
+  )
+```
+
+## Sesión
+
+```{r}
+#| label: session-info
+#| echo: false
+sessionInfo()
+```

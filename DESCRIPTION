@@ -1,0 +1,33 @@
+Package: dataviz-with-R
+Title: Data Visualization Projects with R
+Version: 0.1.0
+Authors@R: person("Carla Daniela", "Di Monno", role = c("aut", "cre"))
+Description: Two reproducible Quarto reports on data visualization with R:
+    reservoir volume anomalies in Spain (tidyverse/ggplot2) and relief maps
+    of Portugal plus hospital beds in Europe (sf/terra/tidyterra).
+License: MIT
+Encoding: UTF-8
+Imports:
+    tidyverse,
+    lubridate,
+    janitor,
+    patchwork,
+    readxl,
+    RODBC,
+    here,
+    knitr,
+    sf,
+    elevatr,
+    terra,
+    whitebox,
+    ggnewscale,
+    tidyterra,
+    giscoR,
+    units,
+    ggblend,
+    eurostat,
+    mapview,
+    leaflet,
+    htmltools,
+    viridis,
+    paletteer
