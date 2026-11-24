@@ -3,21 +3,29 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/carladdm/dataviz-with-R?style=for-the-badge)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)
 
-# Visualización de datos con R
+# Visualización de datos y análisis geoespacial con R y Quarto
 
-Data visualization and spatial analysis with **R** and **Quarto**.
-
-Dos proyectos pequeños de visualización y análisis espacial resueltos con **R**
-y documentados con **Quarto**. Cada informe es autocontenido
-(`embed-resources: true`), por lo que puede abrirse directamente en el
-navegador.
+Flujos reproducibles en **R** y **Quarto** aplicados a hidrología, modelado
+del relieve y cartografía temática en Europa. Los informes son autocontenidos
+(`embed-resources: true`) y pueden consultarse directamente en el navegador.
 
 **Informes publicados (GitHub Pages)**
 
 - [01 · Anomalías del volumen en embalses de España](https://carladdm.github.io/dataviz-with-R/reports/01-embalses.html)
 - [02 · Mapas de relieve de Portugal y camas hospitalarias en Europa](https://carladdm.github.io/dataviz-with-R/reports/02-hillshade.html)
 
-También disponibles en el repositorio: [HTML 01](docs/reports/01-embalses.html) · [HTML 02](docs/reports/02-hillshade.html).
+También disponibles en el repositorio:
+[HTML 01](docs/reports/01-embalses.html) ·
+[HTML 02](docs/reports/02-hillshade.html).
+
+## Vista previa
+
+| 01 · Embalses de España | 02 · Portugal y Europa |
+| :---: | :---: |
+| ![Vista previa embalses](docs/assets/01-embalses-preview.png) | ![Vista previa hillshade y Europa](docs/assets/02-hillshade-preview.png) |
+
+Las miniaturas se sirven desde `docs/assets/` para que funcionen tanto en la
+vista del repositorio como en GitHub Pages.
 
 ## Estructura del repositorio
 
@@ -35,11 +43,14 @@ dataviz-with-R/
 │   └── fetch_ag3_data.R
 ├── data/
 │   ├── raw/              # descargas pesadas (ignoradas por Git)
-│   └── processed/        # caché ligera de AG3 (versionada)
+│   └── processed/        # caché ligera de 02-hillshade (versionada)
 ├── reports/              # fuentes Quarto
 │   ├── 01-embalses.qmd
 │   └── 02-hillshade.qmd
 ├── docs/                 # HTML generados (Quarto conserva reports/)
+│   ├── assets/           # miniaturas versionadas del README
+│   │   ├── 01-embalses-preview.png
+│   │   └── 02-hillshade-preview.png
 │   └── reports/
 │       ├── 01-embalses.html
 │       └── 02-hillshade.html
@@ -50,7 +61,7 @@ La separación entre `scripts/` (descarga), `data/` (datos), `reports/`
 (código + narrativa) y `docs/` (resultado) permite que cada informe se
 renderice sin repetir descargas ni depender de rutas relativas frágiles.
 
-## Proyectos
+## Proyectos y competencias demostradas
 
 ### 01 · Embalses de España
 
@@ -73,11 +84,18 @@ renderice sin repetir descargas ni depender de rutas relativas frágiles.
 - **Fuentes:** SNIG/APA (lagos), teselas de elevación vía `elevatr` y
   Eurostat (`hlth_rs_bdsrg`, unidad `P_HTHAB`, año 2013).
 
-## Objetivos
+## ¿Qué pone en práctica este repositorio?
 
-- Aplicar técnicas de visualización con R a datos ambientales y geoespaciales.
-- Explorar datos hidrológicos (embalses en España) y del terreno (Portugal).
-- Producir informes reproducibles y compartibles con Quarto.
+- **Arquitectura reproducible:** desacoplamiento entre adquisición de datos
+  (`scripts/`), funciones auxiliares (`R/`), informes en Quarto (`reports/`)
+  y salidas autocontenidas (`docs/`).
+- **Criterio analítico y rigor metodológico:** definición explícita del año
+  hidrológico (oct–sep), *baseline* histórico fijo, umbral de sequía
+  (`< percentil 40`) y cálculo dinámico de métricas narrativas.
+- **Visualización estadística y geoespacial:** aplicación de R a datos
+  ambientales y territoriales mediante gráficos multi-panel (embalses en
+  España), modelado del relieve (*hillshade* en Portugal) y cartografía
+  temática europea.
 
 ## Cómo ejecutarlo
 
@@ -91,7 +109,7 @@ cd dataviz-with-R
 
 # 1. Preparar datos
 Rscript scripts/fetch_embalses.R   # MITECO: requiere driver Access ACE 64 bits
-# scripts/fetch_ag3_data.R solo si quieres refrescar AG3 (sus datos ya están versionados)
+# fetch_ag3_data.R solo si quieres refrescar 02-hillshade (datos ya versionados)
 
 # 2. Renderizar informes
 quarto render reports/01-embalses.qmd
@@ -101,24 +119,31 @@ quarto render reports/02-hillshade.qmd
 Con `_quarto.yml`, los HTML se escriben en `docs/reports/` (Quarto mantiene la
 ruta relativa de `reports/`) y los PNG en `outputs/`.
 
-### Caso particular de AG2
+## Limitaciones y decisiones de reproducibilidad
 
-`scripts/fetch_embalses.R` abre el `BD-Embalses.mdb` de MITECO con el
-controlador ODBC **Microsoft Access Driver (*.mdb, *.accdb), 64 bits**. Si no
-está instalado, el script detiene la ejecución con un mensaje explícito. No es
-necesario tenerlo para consultar el informe ya renderizado en `docs/reports/`.
-Ese HTML corresponde a la última renderización disponible (instantánea
-2023-2024); para regenerarlo con el histórico actual se necesita el driver.
+### Limitaciones
 
-## Decisiones de reproducibilidad
+- **Controlador de Access (01-embalses):** `scripts/fetch_embalses.R` abre
+  `BD-Embalses.mdb` de MITECO con el controlador ODBC
+  `Microsoft Access Driver (*.mdb, *.accdb), 64 bits`. Si no está disponible
+  en el sistema operativo o la arquitectura, el script se detiene con un
+  mensaje explícito. El HTML publicado en `docs/reports/` corresponde a la
+  instantánea 2023-2024 y se puede consultar sin el driver; sí hace falta para
+  regenerarlo con el histórico actual.
+- **Corte temporal de Eurostat (02-hillshade):** el bloque europeo usa
+  `hlth_rs_bdsrg`, unidad `P_HTHAB`, año 2013. Es un corte concreto del
+  análisis, no una serie actualizada automáticamente.
+
+### Decisiones de reproducibilidad
 
 - Los datos se descargan **fuera** de los `.qmd`; así los informes no fallan
   por cambios en el nombre de tablas de MITECO ni por falta de red. La caché
-  procesada de AG3 está versionada, así que ese informe renderiza sin conexión.
+  procesada de 02-hillshade está versionada, así que ese informe renderiza
+  sin conexión.
 - El nombre de la tabla del MDB se detecta por patrón (`Datos Embalses`) y se
   elige la más reciente, en lugar de estar escrito a mano.
 - Los percentiles se calculan respecto al histórico completo disponible
-  (*baseline fijo*). El criterio de “seco” es `< percentil 40` y está
+  (*baseline* fijo). El criterio de “seco” es `< percentil 40` y está
   documentado en el informe.
 - La afirmación “1995 fue el año más seco” se calcula en el propio documento
   y se ordena dinámicamente.
@@ -128,9 +153,9 @@ Ese HTML corresponde a la última renderización disponible (instantánea
 
 ## Publicación
 
-Los HTML se sirven desde `docs/` con GitHub Pages (**Settings → Pages →
-Deploy from a branch → `main` / `/docs`**). El archivo `docs/.nojekyll` evita
-que Jekyll ignore rutas con guion bajo.
+Los HTML y las miniaturas se sirven desde `docs/` con GitHub Pages
+(**Settings → Pages → Deploy from a branch → `main` / `/docs`**). El archivo
+`docs/.nojekyll` evita que Jekyll ignore rutas con guion bajo.
 
 ## Licencias y atribución
 
@@ -139,3 +164,5 @@ no están cubiertos por esa licencia: MITECO, SNIG/APA, Eurostat y las teselas
 de elevación tienen sus propias condiciones. Las fuentes se citan en cada
 informe. El material base de la Actividad Guiada 2 es de Dominic Royé
 (@dr_xeo).
+
+© 2024–2026 Carla Di Monno

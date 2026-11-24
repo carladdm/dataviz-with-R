@@ -8,6 +8,8 @@ data/processed/*
 outputs/*
 !outputs/.gitkeep
 *.png
+# Miniaturas versionadas para el README y GitHub Pages
+!docs/assets/*.png
 *.jpg
 *.tif
 *.tiff
